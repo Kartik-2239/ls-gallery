@@ -15,8 +15,15 @@ func main() {
 	ImgDir := flag.String("path", "images", "Path to the directory containing images")
 	flag.Parse()
 	filePath := *ImgDir
-	if *ImgDir == "" {
+	provided := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "path" {
+			provided = true
+		}
+	})
+	if !provided {
 		filePath, _ = os.Getwd()
+		fmt.Println(filePath)
 	}
 	files, err := os.ReadDir(filePath)
 	if err != nil {

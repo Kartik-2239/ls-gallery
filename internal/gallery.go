@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -20,16 +21,20 @@ const (
 )
 
 type model struct {
-	paths         []string
-	idx           int
-	mode          galleryMode
-	list          list.Model
-	width         int
-	height        int
-	images        map[string]Image
-	enlargedImage Image
-	tmux          bool
+	paths          []string
+	idx            int
+	mode           galleryMode
+	list           list.Model
+	width          int
+	height         int
+	images         map[string]Image
+	enlargedImages map[string]Image
+	enlargedImage  Image
+	tmux           bool
+	loadedImages   int
 }
+
+type initialGalleryLoadMsg struct{}
 
 type imageItem struct {
 	path       string
@@ -108,7 +113,7 @@ func (d imageDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 
 func InitModel(paths []string) *model {
 	w, h, _ := term.GetSize(os.Stdout.Fd())
-	images := make(map[string]Image)
+	images := make(map[string]Image, len(paths))
 	items := make([]list.Item, len(paths))
 	for i, path := range paths {
 		items[i] = imageItem{path: path, size: 0, resolution: ""}
@@ -118,14 +123,15 @@ func InitModel(paths []string) *model {
 	imageList.SetShowTitle(false)
 	imageList.SetStatusBarItemName("image", "images")
 	return &model{
-		paths:  paths,
-		idx:    0,
-		mode:   gallery,
-		list:   imageList,
-		width:  w,
-		height: h,
-		images: images,
-		tmux:   os.Getenv("TMUX") != "",
+		paths:          paths,
+		idx:            0,
+		mode:           gallery,
+		list:           imageList,
+		width:          w,
+		height:         h,
+		images:         images,
+		enlargedImages: make(map[string]Image, len(paths)),
+		tmux:           os.Getenv("TMUX") != "",
 	}
 }
 
@@ -135,11 +141,17 @@ const (
 )
 
 func (m *model) Init() tea.Cmd {
-	return m.loadGalleryImages()
+	return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+		return initialGalleryLoadMsg{}
+	})
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case initialGalleryLoadMsg:
+		return m, m.loadGalleryImages(0, m.list.Paginator.ItemsOnPage(len(m.paths)))
+	case galleryLoadedStruct:
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -153,14 +165,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode != gallery {
 				if m.idx < len(m.paths)-1 {
 					m.idx++
-					return m, m.loadImage(m.idx)
+					return m, m.loadEnlargedImage()
 				}
 			}
 		case "left":
 			if m.mode != gallery {
 				if m.idx > 0 {
 					m.idx--
-					return m, m.loadImage(m.idx)
+					return m, m.loadEnlargedImage()
 				}
 			}
 		case "space":
@@ -185,10 +197,40 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == gallery {
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
+		cmd = m.handlePagination()
 		return m, cmd
 	}
 
 	return m, nil
+}
+
+// func (m *model) handlePagination(last_idx int) tea.Cmd {
+// 	cur_page := m.list.Paginator.Page + 1
+// 	n := m.list.Paginator.PerPage
+
+// 	if (last_idx >= (cur_page-1)*n && last_idx < cur_page*n) && (last_idx >= (cur_page-2)*n && last_idx < (cur_page-1)*n) {
+// 		return nil
+// 	}
+
+// 	for i := 0; i < len(m.images); i++ {
+// 		if i < (cur_page-1)*n || i > cur_page*n {
+// 			m.images[m.paths[i]] = Image{}
+// 		}
+// 	}
+// 	return m.loadGalleryImages((cur_page-1)*n, cur_page*n)
+// }
+
+func (m *model) handlePagination() tea.Cmd {
+	if m.list.Index() >= (m.list.Paginator.PerPage)/2 {
+		next_page := (m.list.Paginator.Page + 2) * m.list.Paginator.PerPage
+		if next_page > m.loadedImages {
+			if next_page > len(m.paths) {
+				return m.loadGalleryImages(m.loadedImages, len(m.paths))
+			}
+			return m.loadGalleryImages(m.loadedImages, next_page)
+		}
+	}
+	return nil
 }
 
 func (m *model) indexForPath(path string) int {
@@ -200,21 +242,43 @@ func (m *model) indexForPath(path string) int {
 	return 0
 }
 
-func (m *model) loadGalleryImages() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(m.paths))
-	for i := range m.paths {
+type galleryLoadedStruct struct{}
+
+func galleryLoadedMsg() tea.Cmd {
+	return func() tea.Msg {
+		return galleryLoadedStruct{}
+	}
+}
+
+func (m *model) loadGalleryImages(start int, stop int) tea.Cmd {
+	if start < 0 {
+		start = 0
+	}
+	if stop > len(m.paths) {
+		stop = len(m.paths)
+	}
+	if start >= stop {
+		return nil
+	}
+
+	cmds := make([]tea.Cmd, 0, stop-start)
+	for i := start; i < stop; i++ {
 		cmd := m.loadImage(i)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
+	if stop > m.loadedImages {
+		m.loadedImages = stop
+	}
+	cmds = append(cmds, galleryLoadedMsg())
 	return tea.Batch(cmds...)
 }
 
 func (m *model) View() tea.View {
 	img := lipgloss.NewStyle().Border(lipgloss.NormalBorder())
 	if m.mode == gallery {
-		v := tea.View{Content: m.list.View()}
+		v := tea.NewView(m.list.View() + "\n" + fmt.Sprintf("Loaded Images: %d", m.loadedImages))
 		v.AltScreen = true
 		return v
 	}
@@ -237,14 +301,15 @@ func RenderEnlargedView(m *model, img lipgloss.Style) tea.View {
 
 func (m *model) loadEnlargedImage() tea.Cmd {
 	path := m.paths[m.idx]
-	im, ok := m.images[path]
+
+	im, ok := m.enlargedImages[path]
 	if !ok {
 		var err error
 		im, err = ShowImage(path, 10, 30, m.idx+1000, m.tmux)
 		if err != nil {
 			log.Fatal(err)
 		}
-		m.images[path] = im
+		m.enlargedImages[path] = im
 	}
 	m.enlargedImage = im
 	return tea.Raw(im.Raw)
@@ -255,7 +320,7 @@ func (m *model) loadImage(idx int) tea.Cmd {
 	im, ok := m.images[path]
 	if !ok {
 		var err error
-		im, err = ShowImage(path, maxHeight, maxWidth, idx+1, m.tmux)
+		im, err = ShowImage(path, maxHeight, maxWidth, idx+100, m.tmux)
 		if err != nil {
 			log.Fatal(err)
 		}
