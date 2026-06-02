@@ -4,11 +4,9 @@
 
 A small terminal image gallery written in Go.
 
-
-<!-- <video src=" -->
-[Video Demo](https://github.com/user-attachments/assets/73158983-4ae0-4bbb-a99a-9163d723ee75)
-<!-- " controls muted playsinline width="100%"></video> -->
-
+<div align="center">
+<video src="https://github.com/user-attachments/assets/73158983-4ae0-4bbb-a99a-9163d723ee75" controls muted playsinline width="100%"></video>
+</div>
 
 ## Requirements
 
