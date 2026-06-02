@@ -1,11 +1,9 @@
-
-
 # ls-gallery
 
 A small terminal image gallery written in Go.
 
 <div align="center">
-<video src="https://github.com/user-attachments/assets/73158983-4ae0-4bbb-a99a-9163d723ee75" controls muted playsinline width="100%"></video>
+<video src="https://github.com/user-attachments/assets/2e6e20d0-bbae-4cf0-8f4f-2c3372ecc29e" controls muted playsinline width="100%"></video>
 </div>
 
 ## Requirements
