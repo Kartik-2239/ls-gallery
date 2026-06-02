@@ -3,7 +3,9 @@
 A small terminal image gallery written in Go.
 
 
-<video src="https://github.com/Kartik-2239/ls-gallery/assets/ls-gallery.mp4" controls muted playsinline width="100%"></video>
+<!-- <video src=" -->
+https://github.com/Kartik-2239/ls-gallery/assets/ls-gallery.mp4
+<!-- " controls muted playsinline width="100%"></video> -->
 
 
 ## Requirements
